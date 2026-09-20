@@ -1,8 +1,14 @@
 name: Release
 
-# A tag push is the normal trigger. `workflow_dispatch` exists for the case where
-# the tag cannot be pushed directly: it creates the tag at the commit it runs on,
-# so it must not try to check the tag out first.
+# Three ways in, all of which end in the same place:
+#
+#   * pushing a `v*` tag -- the normal path;
+#   * `workflow_dispatch` with a tag -- for a re-run, or when the tag already exists;
+#   * `repository_dispatch` of type `release` with `client_payload.tag` -- for an
+#     automation that can reach the API but cannot push a tag.
+#
+# The last two create the tag as part of publishing, so neither may try to check
+# the tag out first.
 on:
   push:
     tags: ["v*"]
@@ -11,6 +17,8 @@ on:
       tag:
         description: "Tag to create and publish, e.g. v0.1.0-pre.0"
         required: true
+  repository_dispatch:
+    types: [release]
 
 permissions:
   contents: write
@@ -19,8 +27,84 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  resolve:
+    name: Resolve the release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+      notes: ${{ steps.tag.outputs.notes }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Everything that can be checked cheaply is checked here, before five
+      # builds are spent discovering that the tag is malformed or the notes are
+      # missing.
+      - name: Work out and validate the tag
+        id: tag
+        env:
+          FROM_DISPATCH: ${{ inputs.tag }}
+          FROM_PAYLOAD: ${{ github.event.client_payload.tag }}
+          FROM_REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -n "${FROM_DISPATCH}" ]; then
+            tag="${FROM_DISPATCH}"
+          elif [ -n "${FROM_PAYLOAD}" ]; then
+            tag="${FROM_PAYLOAD}"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            tag="${FROM_REF}"
+          else
+            echo "::error::No tag given. Pass one as a workflow input or as client_payload.tag."
+            exit 1
+          fi
+
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::\`$tag\` is not a Chip Loom release tag (vMAJOR.MINOR.PATCH[-pre.N])"
+            exit 1
+          fi
+
+          notes="docs/releases/${tag}.md"
+          if [ ! -f "$notes" ]; then
+            # A release with no notes is not a release.
+            echo "::error::No release notes at $notes"
+            exit 1
+          fi
+
+          # Only a bare vX.Y.Z is a finished product; everything else is history.
+          if printf '%s' "$tag" | grep -q -- '-'; then prerelease=true; else prerelease=false; fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "notes=$notes" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Release ${tag}"
+            echo
+            echo "* prerelease: \`${prerelease}\`"
+            echo "* notes: \`${notes}\`"
+            echo "* commit: \`${{ github.sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check that the version in the tree matches the tag
+        run: |
+          set -euo pipefail
+          tag="${{ steps.tag.outputs.tag }}"
+          want="${tag#v}"
+
+          crate=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          ext=$(node -e "process.stdout.write(require('./extension/package.json').version)")
+
+          fail=0
+          [ "$crate" = "$want" ] || { echo "::error::Cargo.toml says $crate, tag says $want"; fail=1; }
+          [ "$ext" = "$want" ] || { echo "::error::extension/package.json says $ext, tag says $want"; fail=1; }
+          # A binary whose --version disagrees with the release it shipped in is
+          # unreportable, so this is a hard failure rather than a warning.
+          [ "$fail" = "0" ] || exit 1
+
   build:
     name: Build ${{ matrix.target }}
+    needs: resolve
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -44,8 +128,8 @@ jobs:
           - target: x86_64-apple-darwin
             os: macos-latest
             archive: tar.gz
-            # macos-latest is Apple Silicon and has no Rosetta, so an x86-64
-            # binary cannot be executed on it.
+            # macos-latest is Apple Silicon with no Rosetta, so an x86-64 binary
+            # cannot be executed on it.
             smoke: false
           - target: x86_64-pc-windows-msvc
             os: windows-latest
@@ -92,16 +176,16 @@ jobs:
 
       - name: Note that this artifact was not run
         if: ${{ !matrix.smoke }}
-        run: |
-          echo "::warning::${{ matrix.target }} is cross-compiled on this runner, so it was built but not executed. The release notes must say so."
+        run: echo "::warning::${{ matrix.target }} is cross-compiled here, so it was built but not executed. The release notes must say so."
 
       - name: Package
         id: package
         shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          version="${{ inputs.tag || github.ref_name }}"
-          name="chiploom-${version}-${{ matrix.target }}"
+          name="chiploom-${RELEASE_TAG}-${{ matrix.target }}"
           staging="dist/${name}"
           mkdir -p "$staging"
 
@@ -142,6 +226,7 @@ jobs:
 
   extension:
     name: Build the VS Code extension
+    needs: resolve
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -162,16 +247,17 @@ jobs:
 
       - name: Package the extension
         working-directory: extension
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          version="${{ inputs.tag || github.ref_name }}"
           # The .vsix has to carry the licence itself; it is not committed here.
           cp ../LICENSE LICENSE
           npx --yes @vscode/vsce@latest package \
             --no-dependencies \
             --allow-missing-repository \
-            --out "chiploom-${version}.vsix"
-          sha256sum "chiploom-${version}.vsix" > "chiploom-${version}.vsix.sha256"
+            --out "chiploom-${RELEASE_TAG}.vsix"
+          sha256sum "chiploom-${RELEASE_TAG}.vsix" > "chiploom-${RELEASE_TAG}.vsix.sha256"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -183,7 +269,7 @@ jobs:
 
   publish:
     name: Publish the release
-    needs: [build, extension]
+    needs: [resolve, build, extension]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -197,26 +283,21 @@ jobs:
         run: ls -lR artifacts
 
       - name: Check that every expected artifact is present
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          version="${{ inputs.tag || github.ref_name }}"
           missing=0
           for name in \
-            "chiploom-${version}-x86_64-unknown-linux-gnu.tar.gz" \
-            "chiploom-${version}-aarch64-unknown-linux-gnu.tar.gz" \
-            "chiploom-${version}-aarch64-apple-darwin.tar.gz" \
-            "chiploom-${version}-x86_64-apple-darwin.tar.gz" \
-            "chiploom-${version}-x86_64-pc-windows-msvc.zip" \
-            "chiploom-${version}.vsix"
+            "chiploom-${RELEASE_TAG}-x86_64-unknown-linux-gnu.tar.gz" \
+            "chiploom-${RELEASE_TAG}-aarch64-unknown-linux-gnu.tar.gz" \
+            "chiploom-${RELEASE_TAG}-aarch64-apple-darwin.tar.gz" \
+            "chiploom-${RELEASE_TAG}-x86_64-apple-darwin.tar.gz" \
+            "chiploom-${RELEASE_TAG}-x86_64-pc-windows-msvc.zip" \
+            "chiploom-${RELEASE_TAG}.vsix"
           do
-            if [ ! -f "artifacts/${name}" ]; then
-              echo "::error::missing artifact ${name}"
-              missing=1
-            fi
-            if [ ! -f "artifacts/${name}.sha256" ]; then
-              echo "::error::missing checksum ${name}.sha256"
-              missing=1
-            fi
+            [ -f "artifacts/${name}" ] || { echo "::error::missing artifact ${name}"; missing=1; }
+            [ -f "artifacts/${name}.sha256" ] || { echo "::error::missing checksum ${name}.sha256"; missing=1; }
           done
           [ "$missing" = "0" ] || exit 1
 
@@ -226,29 +307,24 @@ jobs:
           set -euo pipefail
           for file in *.sha256; do sha256sum -c "$file"; done
 
-      - name: Locate the release notes for this tag
-        id: notes
-        run: |
-          set -euo pipefail
-          version="${{ inputs.tag || github.ref_name }}"
-          notes="docs/releases/${version}.md"
-          if [ ! -f "$notes" ]; then
-            # Never publish a release with no notes; say so instead.
-            echo "::error::No release notes found at $notes"
-            exit 1
-          fi
-          echo "path=$notes" >> "$GITHUB_OUTPUT"
-
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          name: ${{ inputs.tag || github.ref_name }}
-          # On workflow_dispatch the tag does not exist yet; create it here.
+          tag_name: ${{ needs.resolve.outputs.tag }}
+          name: ${{ needs.resolve.outputs.tag }}
+          # On a dispatch the tag does not exist yet; create it at this commit.
           target_commitish: ${{ github.sha }}
-          body_path: ${{ steps.notes.outputs.path }}
-          # Anything with a pre-release suffix is development history, not a
-          # finished product. Only `vX.Y.Z` is published as a stable release.
-          prerelease: ${{ contains(inputs.tag || github.ref_name, '-') }}
+          body_path: ${{ needs.resolve.outputs.notes }}
+          prerelease: ${{ needs.resolve.outputs.prerelease == 'true' }}
           files: artifacts/**
           fail_on_unmatched_files: true
+
+      - name: Summarise
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          {
+            echo "### Published ${RELEASE_TAG}"
+            echo
+            echo "https://github.com/${{ github.repository }}/releases/tag/${RELEASE_TAG}"
+          } >> "$GITHUB_STEP_SUMMARY"

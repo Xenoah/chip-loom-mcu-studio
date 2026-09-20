@@ -103,19 +103,55 @@ git tag -a v0.N.0-pre.M -m "Phase N: <name>"
 git push origin v0.N.0-pre.M
 ```
 
+If pushing to `refs/tags` is not available to you, skip this step and use one of
+the dispatch paths below, which create the tag as they publish.
+
 ### 6. Publish
 
 The tag triggers `.github/workflows/release.yml`, which:
 
-1. builds `chiploom` for all five target triples;
-2. runs `--version` and `doctor` on each native binary — a broken artifact is never
-   published;
-3. packages each build with `LICENSE`, `NOTICE`, both READMEs, `CHANGELOG.md` and
+1. **resolves and validates** first, so nothing expensive runs against a bad input:
+   the tag must look like `vMAJOR.MINOR.PATCH[-pre.N]`, `docs/releases/<tag>.md`
+   must exist, and the versions in `Cargo.toml` and `extension/package.json` must
+   both equal the tag. A binary whose `--version` disagrees with the release it
+   shipped in cannot be reported against, so that last one is a hard failure;
+2. builds `chiploom` for all five target triples;
+3. runs `--version`, `--help` and `doctor` on every binary it can execute — a
+   broken artifact is never published. The two cross-compiled targets cannot be
+   run where they are built; the workflow warns for each, and the release notes
+   have to say which artifacts were executed and which were not;
+4. packages each build with `LICENSE`, `NOTICE`, both READMEs, `CHANGELOG.md` and
    `docs/`, as `.tar.gz` or `.zip`;
-4. writes a `.sha256` next to every archive;
-5. builds the `.vsix`;
-6. creates the release from `docs/releases/<tag>.md`, marked prerelease unless the
+5. writes a `.sha256` next to every archive, and verifies all of them before
+   publishing;
+6. builds the `.vsix`;
+7. checks every expected artifact and checksum is present;
+8. creates the release from `docs/releases/<tag>.md`, marked prerelease unless the
    tag is a bare `vX.Y.Z`.
+
+### Publishing without pushing a tag
+
+Some environments can reach the GitHub API but cannot push to `refs/tags`. The
+workflow therefore accepts two other ways in, both of which create the tag as part
+of publishing:
+
+```bash
+# From the Actions tab, or the API: Run workflow -> tag = v0.N.0-pre.M
+gh workflow run release.yml -f tag=v0.N.0-pre.M
+
+# Or a repository_dispatch, for an automation with API access but no tag push
+curl -X POST \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  -H "Content-Type: application/json" \
+  -d '{"event_type":"release","client_payload":{"tag":"v0.N.0-pre.M"}}' \
+  https://api.github.com/repos/Xenoah/chip-loom-mcu-studio/dispatches
+```
+
+Both run against the head of the branch they are dispatched on, and the same
+validation applies. Verify the commit is the one you tested before dispatching:
+these paths do not check that a tag you meant to build already points somewhere
+else.
 
 ### 7. Confirm
 
