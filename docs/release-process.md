@@ -75,6 +75,12 @@ Every prerelease's notes contain, **in both Japanese and English**:
 supported MCUs before Phase 1 — say so explicitly rather than omitting it. A
 reader has to be able to tell "not yet" from "forgot to mention".
 
+**Link to files with absolute URLs pinned to the tag**, e.g.
+`https://github.com/Xenoah/chip-loom-mcu-studio/blob/v0.N.0-pre.M/docs/cli.md`.
+The file is rendered as the release body on the releases page, where a relative
+path like `../cli.md` does not resolve — and pinning to the tag means the link
+keeps pointing at the documentation this release actually shipped.
+
 ### 4. Commit and push
 
 ```bash
