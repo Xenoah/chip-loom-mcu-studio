@@ -56,31 +56,49 @@ impl Paths {
         data_dir: Option<PathBuf>,
         cache_dir: Option<PathBuf>,
     ) -> Result<Self> {
-        match Self::discover() {
+        Self::from_platform_or_overrides(Self::discover(), config_dir, data_dir, cache_dir)
+    }
+
+    /// The decision [`Paths::resolve`] makes, with platform discovery passed in.
+    ///
+    /// Separated so the fallback can be tested. On a machine where discovery works
+    /// -- which is every machine the test suite runs on -- there is no other way to
+    /// reach the branch that matters most.
+    fn from_platform_or_overrides(
+        platform: Result<Self>,
+        config_dir: Option<PathBuf>,
+        data_dir: Option<PathBuf>,
+        cache_dir: Option<PathBuf>,
+    ) -> Result<Self> {
+        match platform {
             Ok(paths) => Ok(paths
                 .with_config_dir(config_dir)
                 .with_data_dir(data_dir)
                 .with_cache_dir(cache_dir)),
-            Err(platform_error) => {
-                let missing: Vec<&str> = [
-                    (config_dir.is_none(), "CHIPLOOM_CONFIG_DIR"),
-                    (data_dir.is_none(), "CHIPLOOM_DATA_DIR"),
-                    (cache_dir.is_none(), "CHIPLOOM_CACHE_DIR"),
-                ]
-                .into_iter()
-                .filter_map(|(absent, name)| absent.then_some(name))
-                .collect();
 
-                match (config_dir, data_dir, cache_dir) {
-                    (Some(config_dir), Some(data_dir), Some(cache_dir)) => {
-                        Ok(Self::new(config_dir, data_dir, cache_dir))
-                    }
-                    _ => Err(Error::Environment(format!(
+            // The platform cannot answer. The overrides can stand in for it, but
+            // only if they cover all three: a partial set would silently put some
+            // of Chip Loom's state somewhere undefined.
+            Err(platform_error) => match (config_dir, data_dir, cache_dir) {
+                (Some(config_dir), Some(data_dir), Some(cache_dir)) => {
+                    Ok(Self::new(config_dir, data_dir, cache_dir))
+                }
+                (config_dir, data_dir, cache_dir) => {
+                    let missing: Vec<&str> = [
+                        (config_dir.is_none(), "CHIPLOOM_CONFIG_DIR"),
+                        (data_dir.is_none(), "CHIPLOOM_DATA_DIR"),
+                        (cache_dir.is_none(), "CHIPLOOM_CACHE_DIR"),
+                    ]
+                    .into_iter()
+                    .filter_map(|(absent, name)| absent.then_some(name))
+                    .collect();
+
+                    Err(Error::Environment(format!(
                         "{platform_error}. Set {} to run Chip Loom on this host",
                         missing.join(", ")
-                    ))),
+                    )))
                 }
-            }
+            },
         }
     }
 
@@ -339,35 +357,79 @@ mod tests {
         );
     }
 
-    #[test]
-    fn resolution_layers_overrides_on_top_of_the_platform() {
-        let temp = tempfile::tempdir().expect("temp dir");
-        let data = temp.path().join("data");
+    /// Stands in for a host that cannot tell Chip Loom where the user's home is.
+    fn no_platform() -> Result<Paths> {
+        Err(Error::Environment(
+            "cannot determine this user's home directory".to_owned(),
+        ))
+    }
 
-        // Whatever the platform says, an override wins. (If this host has no
-        // discoverable home at all, resolution still succeeds only when all three
-        // are given, which the next test covers.)
-        if let Ok(platform) = Paths::discover() {
-            let resolved = Paths::resolve(None, Some(data.clone()), None).expect("resolve");
-            assert_eq!(resolved.data_dir(), data);
-            assert_eq!(resolved.config_dir(), platform.config_dir());
-            assert_eq!(resolved.cache_dir(), platform.cache_dir());
-        }
+    /// Stands in for a host where discovery works.
+    fn platform() -> Paths {
+        Paths::new(
+            PathBuf::from("/platform/config"),
+            PathBuf::from("/platform/data"),
+            PathBuf::from("/platform/cache"),
+        )
     }
 
     #[test]
-    fn all_three_overrides_are_enough_on_their_own() {
-        let temp = tempfile::tempdir().expect("temp dir");
-        let resolved = Paths::resolve(
-            Some(temp.path().join("config")),
-            Some(temp.path().join("data")),
-            Some(temp.path().join("cache")),
+    fn an_override_wins_over_the_platform_and_the_rest_is_left_alone() {
+        let resolved = Paths::from_platform_or_overrides(
+            Ok(platform()),
+            None,
+            Some(PathBuf::from("/vendor/data")),
+            None,
         )
-        .expect("three overrides are sufficient");
+        .expect("resolve");
 
-        assert_eq!(resolved.config_dir(), temp.path().join("config"));
-        assert_eq!(resolved.data_dir(), temp.path().join("data"));
-        assert_eq!(resolved.cache_dir(), temp.path().join("cache"));
+        assert_eq!(resolved.data_dir(), Path::new("/vendor/data"));
+        assert_eq!(resolved.config_dir(), Path::new("/platform/config"));
+        assert_eq!(resolved.cache_dir(), Path::new("/platform/cache"));
+    }
+
+    #[test]
+    fn all_three_overrides_replace_a_platform_that_cannot_answer() {
+        // The case that matters: a service account, or a container with no
+        // profile, must still be usable when the user has said where things go.
+        let resolved = Paths::from_platform_or_overrides(
+            no_platform(),
+            Some(PathBuf::from("/ci/config")),
+            Some(PathBuf::from("/ci/data")),
+            Some(PathBuf::from("/ci/cache")),
+        )
+        .expect("three overrides are sufficient without the platform");
+
+        assert_eq!(resolved.config_dir(), Path::new("/ci/config"));
+        assert_eq!(resolved.data_dir(), Path::new("/ci/data"));
+        assert_eq!(resolved.cache_dir(), Path::new("/ci/cache"));
+    }
+
+    #[test]
+    fn a_partial_override_set_fails_and_names_what_is_missing() {
+        let err = Paths::from_platform_or_overrides(
+            no_platform(),
+            Some(PathBuf::from("/ci/config")),
+            None,
+            None,
+        )
+        .expect_err("a partial set would put some state somewhere undefined");
+
+        let message = err.to_string();
+        assert!(message.contains("CHIPLOOM_DATA_DIR"), "{message}");
+        assert!(message.contains("CHIPLOOM_CACHE_DIR"), "{message}");
+        // The one that was supplied must not be listed as missing.
+        assert!(!message.contains("CHIPLOOM_CONFIG_DIR"), "{message}");
+        assert_eq!(err.exit_code(), crate::error::ExitCode::Environment);
+    }
+
+    #[test]
+    fn no_overrides_at_all_reports_the_platform_failure_and_the_way_out() {
+        let err = Paths::from_platform_or_overrides(no_platform(), None, None, None)
+            .expect_err("nothing to fall back to");
+        let message = err.to_string();
+        assert!(message.contains("home directory"), "{message}");
+        assert!(message.contains("CHIPLOOM_CONFIG_DIR"), "{message}");
     }
 
     #[test]

@@ -93,8 +93,7 @@ jobs:
       - name: Note that this artifact was not run
         if: ${{ !matrix.smoke }}
         run: |
-          echo "::warning::${{ matrix.target }} is cross-compiled on this runner and \
-          was not executed. The release notes must say so."
+          echo "::warning::${{ matrix.target }} is cross-compiled on this runner, so it was built but not executed. The release notes must say so."
 
       - name: Package
         id: package

@@ -91,7 +91,7 @@ version does not build, flash, monitor or debug anything.
 
 **Tests**
 
-- 139 Rust tests: unit tests beside the code, and 25 integration tests that run the
+- 141 Rust tests: unit tests beside the code, and 25 integration tests that run the
   real binary and assert on exit codes and stream separation.
 - 16 TypeScript tests that drive the real binary over the real protocol — no mocks,
   no editor required.
