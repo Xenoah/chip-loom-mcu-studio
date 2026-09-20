@@ -1,0 +1,54 @@
+name: Bug report
+description: Something in Chip Loom does not work.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The `chiploom doctor` output below is usually
+        enough to reproduce the problem, so please include it.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `chiploom doctor --format json`
+      description: This reports your platform, versions and storage locations.
+      render: json
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Output of `chiploom version -v`
+      description: Paste the `version` and `commit` lines at least.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did this happen
+      options:
+        - Command line (chiploom)
+        - VS Code extension
+        - Both
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        Re-run with `-vv` and paste the output. For the extension, use
+        "Chip Loom: Show Output".
+      render: shell

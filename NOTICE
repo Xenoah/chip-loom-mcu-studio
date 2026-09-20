@@ -1,0 +1,21 @@
+Chip Loom MCU Studio
+Copyright 2026 Chip Loom contributors
+
+This product includes software developed as part of the Chip Loom project
+(https://github.com/Xenoah/chip-loom-mcu-studio).
+
+Licensed under the Apache License, Version 2.0. See LICENSE for the full text.
+
+Third-party components
+----------------------
+The Chip Loom Rust workspace depends on third-party crates published on
+crates.io; the VS Code extension depends on packages published on npm.
+Their licenses are reported by the standard tooling for each ecosystem:
+
+    cargo tree --format "{p} {l}"
+    npm ls --all --long
+
+Chip Loom does not redistribute third-party compiler toolchains inside this
+repository. From Phase 2 onwards, toolchains are downloaded on demand from
+their upstream publishers and remain under their own licenses; Chip Loom
+records the license of every artifact it installs.

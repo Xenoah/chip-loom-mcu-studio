@@ -1,0 +1,31 @@
+[package]
+name = "chiploom-cli"
+description = "Chip Loom command-line interface: the `chiploom` binary."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "chiploom"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+chiploom-core = { workspace = true }
+clap = { workspace = true }
+clap_complete = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
+tempfile = { workspace = true }

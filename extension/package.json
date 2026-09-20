@@ -1,0 +1,86 @@
+{
+  "name": "chiploom",
+  "displayName": "Chip Loom",
+  "description": "Build, flash, monitor and debug microcontroller firmware from VS Code.",
+  "version": "0.1.0-pre.0",
+  "publisher": "chiploom",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Xenoah/chip-loom-mcu-studio.git",
+    "directory": "extension"
+  },
+  "engines": {
+    "vscode": "^1.90.0",
+    "node": ">=20"
+  },
+  "categories": ["Programming Languages", "Debuggers", "Other"],
+  "keywords": ["embedded", "microcontroller", "mcu", "firmware", "arm", "risc-v"],
+  "main": "./out/src/extension.js",
+  "activationEvents": ["onStartupFinished", "workspaceContains:chiploom.toml"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "chiploom.showVersion",
+        "title": "Chip Loom: Show Core Version",
+        "category": "Chip Loom"
+      },
+      {
+        "command": "chiploom.runDoctor",
+        "title": "Chip Loom: Run Diagnostics",
+        "category": "Chip Loom"
+      },
+      {
+        "command": "chiploom.restartCore",
+        "title": "Chip Loom: Restart Core",
+        "category": "Chip Loom"
+      },
+      {
+        "command": "chiploom.showOutput",
+        "title": "Chip Loom: Show Output",
+        "category": "Chip Loom"
+      }
+    ],
+    "configuration": {
+      "title": "Chip Loom",
+      "properties": {
+        "chiploom.corePath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Absolute path to the `chiploom` executable. Leave empty to search the workspace `target` directory and then `PATH`.",
+          "scope": "machine-overridable"
+        },
+        "chiploom.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Connect to the Chip Loom core when a window opens."
+        },
+        "chiploom.logLevel": {
+          "type": "string",
+          "enum": ["error", "warn", "info", "debug", "trace"],
+          "default": "info",
+          "description": "Log level requested from the Chip Loom core. Records appear in the Chip Loom output channel."
+        },
+        "chiploom.startupTimeoutMs": {
+          "type": "number",
+          "default": 15000,
+          "minimum": 1000,
+          "description": "How long to wait for the core to answer the initialize handshake before giving up."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc --project .",
+    "watch": "tsc --project . --watch",
+    "pretest": "npm run compile",
+    "test": "node --test \"out/test/**/*.test.js\"",
+    "prepackage": "node -e \"require('node:fs').copyFileSync('../LICENSE','LICENSE')\"",
+    "package": "vsce package --no-dependencies --out chiploom.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,0 +1,200 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and publish"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-13
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          # `build.rs` records the commit in the binary, so the full history is
+          # needed for the version string to be meaningful.
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }} --bin chiploom
+
+      - name: Verify the binary runs and reports itself
+        if: matrix.target != 'aarch64-unknown-linux-gnu' || runner.arch == 'ARM64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin="target/${{ matrix.target }}/release/chiploom"
+          [ "${{ matrix.archive }}" = "zip" ] && bin="${bin}.exe"
+          "$bin" --version
+          "$bin" doctor
+
+      - name: Package
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ inputs.tag || github.ref_name }}"
+          name="chiploom-${version}-${{ matrix.target }}"
+          staging="dist/${name}"
+          mkdir -p "$staging"
+
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            cp "target/${{ matrix.target }}/release/chiploom.exe" "$staging/"
+          else
+            cp "target/${{ matrix.target }}/release/chiploom" "$staging/"
+          fi
+          cp LICENSE NOTICE README.md README.ja.md CHANGELOG.md "$staging/"
+          cp -r docs "$staging/docs"
+
+          cd dist
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            7z a "${name}.zip" "${name}" > /dev/null
+            archive="${name}.zip"
+          else
+            tar czf "${name}.tar.gz" "${name}"
+            archive="${name}.tar.gz"
+          fi
+
+          # A published artifact without a checksum cannot be verified, so every
+          # archive ships one next to it.
+          if command -v sha256sum > /dev/null; then
+            sha256sum "$archive" > "${archive}.sha256"
+          else
+            shasum -a 256 "$archive" > "${archive}.sha256"
+          fi
+          echo "archive=dist/${archive}" >> "$GITHUB_OUTPUT"
+          echo "checksum=dist/${archive}.sha256" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chiploom-${{ matrix.target }}
+          path: |
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.package.outputs.checksum }}
+          if-no-files-found: error
+
+  extension:
+    name: Build the VS Code extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+
+      - name: Install dependencies
+        working-directory: extension
+        run: npm ci
+
+      - name: Compile
+        working-directory: extension
+        run: npm run compile
+
+      - name: Package the extension
+        working-directory: extension
+        run: |
+          set -euo pipefail
+          version="${{ inputs.tag || github.ref_name }}"
+          # The .vsix has to carry the licence itself; it is not committed here.
+          cp ../LICENSE LICENSE
+          npx --yes @vscode/vsce@latest package \
+            --no-dependencies \
+            --allow-missing-repository \
+            --out "chiploom-${version}.vsix"
+          sha256sum "chiploom-${version}.vsix" > "chiploom-${version}.vsix.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chiploom-vsix
+          path: |
+            extension/*.vsix
+            extension/*.vsix.sha256
+          if-no-files-found: error
+
+  publish:
+    name: Publish the release
+    needs: [build, extension]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List what will be published
+        run: ls -lR artifacts
+
+      - name: Collect the release notes for this tag
+        id: notes
+        run: |
+          set -euo pipefail
+          version="${{ inputs.tag || github.ref_name }}"
+          notes="docs/releases/${version}.md"
+          if [ -f "$notes" ]; then
+            echo "path=$notes" >> "$GITHUB_OUTPUT"
+          else
+            # Never publish a release with no notes; say so instead.
+            echo "::error::No release notes found at $notes"
+            exit 1
+          fi
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: ${{ inputs.tag || github.ref_name }}
+          body_path: ${{ steps.notes.outputs.path }}
+          # Anything with a pre-release suffix is development history, not a
+          # finished product. Only `vX.Y.Z` is published as a stable release.
+          prerelease: ${{ contains(inputs.tag || github.ref_name, '-') }}
+          files: artifacts/**
+          fail_on_unmatched_files: true

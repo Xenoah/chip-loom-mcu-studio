@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest something Chip Loom should be able to do.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Chip Loom is built in phases; see `docs/roadmap.md`. Saying which phase
+        your request belongs to helps, but is not required.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that Chip Loom makes hard or impossible?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like instead
+    validations:
+      required: true
+
+  - type: input
+    id: hardware
+    attributes:
+      label: MCU, board or probe involved
+      description: For example "STM32G431CBT6 on a NUCLEO-G431KB, ST-LINK/V2-1".

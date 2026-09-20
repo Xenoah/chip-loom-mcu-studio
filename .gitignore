@@ -1,0 +1,23 @@
+# Rust
+/target
+**/*.rs.bk
+
+# Node / VS Code extension
+node_modules/
+extension/out/
+extension/*.vsix
+# Copied from the repository root when the .vsix is packaged.
+extension/LICENSE
+
+# Release staging, built by the release workflow or by hand
+/dist/
+
+# Chip Loom local state
+/.chiploom/
+*.log
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
