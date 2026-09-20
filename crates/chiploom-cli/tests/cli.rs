@@ -28,12 +28,12 @@ fn chiploom(home: &Path) -> Command {
         .env("CHIPLOOM_CONFIG_DIR", home.join("config"))
         .env("CHIPLOOM_DATA_DIR", home.join("data"))
         .env("CHIPLOOM_CACHE_DIR", home.join("cache"))
-        // Belt and braces for anything that still consults the home directory.
-        .env("HOME", home)
-        .env("USERPROFILE", home)
-        .env("XDG_CONFIG_HOME", home.join("config"))
-        .env("XDG_DATA_HOME", home.join("data"))
-        .env("XDG_CACHE_HOME", home.join("cache"))
+        // Deliberately *not* overriding HOME, USERPROFILE or the XDG variables.
+        // Platform discovery is left working and the overrides above win over it,
+        // which is the path a real user takes. Redirecting USERPROFILE on Windows
+        // breaks discovery outright, and a suite that depended on that would be
+        // testing the failure path and nothing else.
+        //
         // Nothing else the developer exported may leak in.
         .env_remove("CHIPLOOM_CONFIG")
         .env_remove("CHIPLOOM_LOG")

@@ -40,7 +40,9 @@ version does not build, flash, monitor or debug anything.
 - `CHIPLOOM_CONFIG_DIR`, `CHIPLOOM_DATA_DIR` and `CHIPLOOM_CACHE_DIR` relocate the
   three storage locations on every platform. On Windows they are the only way to:
   the platform locations come from the Known Folder API, so `%APPDATA%` has no
-  effect on them.
+  effect on them. Setting all three also makes Chip Loom usable on a host where no
+  home directory can be determined, since it then never asks the platform; with
+  only some set, it stops and names the ones missing.
 - Platform path resolution for configuration, data and cache directories, with
   project discovery by walking up for `chiploom.toml`, and a writability probe that
   round-trips a file rather than merely testing for existence.
@@ -89,7 +91,7 @@ version does not build, flash, monitor or debug anything.
 
 **Tests**
 
-- 137 Rust tests: unit tests beside the code, and 25 integration tests that run the
+- 139 Rust tests: unit tests beside the code, and 25 integration tests that run the
   real binary and assert on exit codes and stream separation.
 - 16 TypeScript tests that drive the real binary over the real protocol — no mocks,
   no editor required.

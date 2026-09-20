@@ -84,8 +84,13 @@ describe('locating the core', () => {
         if (!(error instanceof CoreNotFoundError)) {
           throw error;
         }
-        // A "not found" a user can act on has to say where it looked.
-        assert.match(error.message, /\/usr\/bin/);
+        // A "not found" a user can act on has to say where it looked. The
+        // candidate is built with `join`, so the separator is the platform's --
+        // asserting on a literal `/usr/bin` would only pass on POSIX.
+        assert.ok(
+          error.message.includes(join('/usr/bin', EXECUTABLE)),
+          `expected the candidate path in:\n${error.message}`,
+        );
         assert.match(error.message, /chiploom\.corePath/);
         return true;
       },

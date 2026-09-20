@@ -42,6 +42,12 @@ pub const ENV_CONFIG_FILE: &str = "CHIPLOOM_CONFIG";
 /// from `%APPDATA%`, so overriding that variable achieves nothing.
 pub const ENV_CONFIG_DIR: &str = "CHIPLOOM_CONFIG_DIR";
 
+/// Relocates the data directory. Equivalent to `paths.data_dir`.
+pub const ENV_DATA_DIR: &str = "CHIPLOOM_DATA_DIR";
+
+/// Relocates the cache directory. Equivalent to `paths.cache_dir`.
+pub const ENV_CACHE_DIR: &str = "CHIPLOOM_CACHE_DIR";
+
 /// Which layer a value came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -154,7 +160,15 @@ impl Loader {
         let env = std::env::vars()
             .filter(|(key, _)| key.starts_with(ENV_PREFIX))
             .collect::<BTreeMap<_, _>>();
-        Ok(Self::new(cwd, Paths::discover()?).with_env(env))
+
+        // The overrides are passed to resolution rather than applied after it, so
+        // a host whose home directory cannot be determined is still usable when
+        // the user has said where everything goes.
+        let dir = |name: &str| env.get(name).map(PathBuf::from);
+        let base_paths =
+            Paths::resolve(dir(ENV_CONFIG_DIR), dir(ENV_DATA_DIR), dir(ENV_CACHE_DIR))?;
+
+        Ok(Self::new(cwd, base_paths).with_env(env))
     }
 
     /// Creates a loader with an explicit working directory and base paths.
@@ -439,10 +453,10 @@ fn patch_from_env(env: &BTreeMap<String, String>) -> Result<ConfigPatch, ConfigE
     if let Some(raw) = env.get("CHIPLOOM_LOG_FILE") {
         patch.log.file = Some(PathBuf::from(raw));
     }
-    if let Some(raw) = env.get("CHIPLOOM_DATA_DIR") {
+    if let Some(raw) = env.get(ENV_DATA_DIR) {
         patch.paths.data_dir = Some(PathBuf::from(raw));
     }
-    if let Some(raw) = env.get("CHIPLOOM_CACHE_DIR") {
+    if let Some(raw) = env.get(ENV_CACHE_DIR) {
         patch.paths.cache_dir = Some(PathBuf::from(raw));
     }
     if let Some(raw) = env.get("CHIPLOOM_OFFLINE") {
@@ -776,10 +790,12 @@ mod tests {
         // Loaded from a nested directory, so a naive join against the cwd would
         // produce `work/firmware/src/vendor/toolchains`.
         let loaded = loader(&fixture).load().expect("load");
-        assert_eq!(
-            loaded.paths.data_dir(),
-            project_root.join("vendor/toolchains")
-        );
+        // Project discovery canonicalizes, so the expectation must too: on macOS
+        // the temporary directory lives under a symlinked `/var`.
+        let expected = std::fs::canonicalize(project_root)
+            .expect("canonicalize project root")
+            .join("vendor/toolchains");
+        assert_eq!(loaded.paths.data_dir(), expected);
     }
 
     #[test]

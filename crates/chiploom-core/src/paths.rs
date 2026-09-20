@@ -36,6 +36,54 @@ pub struct Paths {
 }
 
 impl Paths {
+    /// Resolves the three locations, from the platform or from the overrides.
+    ///
+    /// Platform discovery is attempted first, and the overrides are layered on
+    /// top of whatever it returns. When the platform cannot answer at all -- a
+    /// service account, a locked-down container, a CI image with no profile --
+    /// the overrides stand in for it completely.
+    ///
+    /// That fallback matters: without it, a host with no discoverable home
+    /// directory cannot run Chip Loom *even when the user has said exactly where
+    /// to put everything*, which is precisely the situation the overrides exist
+    /// for.
+    ///
+    /// # Errors
+    /// Fails only when the platform cannot answer *and* the overrides do not
+    /// cover all three locations. The error names the ones that are missing.
+    pub fn resolve(
+        config_dir: Option<PathBuf>,
+        data_dir: Option<PathBuf>,
+        cache_dir: Option<PathBuf>,
+    ) -> Result<Self> {
+        match Self::discover() {
+            Ok(paths) => Ok(paths
+                .with_config_dir(config_dir)
+                .with_data_dir(data_dir)
+                .with_cache_dir(cache_dir)),
+            Err(platform_error) => {
+                let missing: Vec<&str> = [
+                    (config_dir.is_none(), "CHIPLOOM_CONFIG_DIR"),
+                    (data_dir.is_none(), "CHIPLOOM_DATA_DIR"),
+                    (cache_dir.is_none(), "CHIPLOOM_CACHE_DIR"),
+                ]
+                .into_iter()
+                .filter_map(|(absent, name)| absent.then_some(name))
+                .collect();
+
+                match (config_dir, data_dir, cache_dir) {
+                    (Some(config_dir), Some(data_dir), Some(cache_dir)) => {
+                        Ok(Self::new(config_dir, data_dir, cache_dir))
+                    }
+                    _ => Err(Error::Environment(format!(
+                        "{platform_error}. Set {} to run Chip Loom on this host",
+                        missing.join(", ")
+                    ))),
+                }
+            }
+        }
+    }
+
     /// Resolves platform defaults, with no project and no overrides.
     ///
     /// # Errors
@@ -221,8 +269,11 @@ impl Paths {
 /// (`doctor`, `target list`) are perfectly usable outside one.
 #[must_use]
 pub fn find_project_root(start: &Path) -> Option<PathBuf> {
-    // `canonicalize` keeps `..` segments from making the walk loop forever, but
-    // a non-existent start path is not fatal -- fall back to it verbatim.
+    // `canonicalize` keeps `..` segments from making the walk loop forever. It
+    // also resolves symlinks, so the root reported back can differ from the path
+    // the user typed -- on macOS, `/var/...` becomes `/private/var/...`. That is
+    // the more accurate answer, and it is what relative path overrides anchor to.
+    // A non-existent start path is not fatal -- fall back to it verbatim.
     let start = std::fs::canonicalize(start).unwrap_or_else(|_| start.to_path_buf());
     start
         .ancestors()
@@ -286,6 +337,37 @@ mod tests {
             leftovers.is_empty(),
             "probe file was not cleaned up: {leftovers:?}"
         );
+    }
+
+    #[test]
+    fn resolution_layers_overrides_on_top_of_the_platform() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let data = temp.path().join("data");
+
+        // Whatever the platform says, an override wins. (If this host has no
+        // discoverable home at all, resolution still succeeds only when all three
+        // are given, which the next test covers.)
+        if let Ok(platform) = Paths::discover() {
+            let resolved = Paths::resolve(None, Some(data.clone()), None).expect("resolve");
+            assert_eq!(resolved.data_dir(), data);
+            assert_eq!(resolved.config_dir(), platform.config_dir());
+            assert_eq!(resolved.cache_dir(), platform.cache_dir());
+        }
+    }
+
+    #[test]
+    fn all_three_overrides_are_enough_on_their_own() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let resolved = Paths::resolve(
+            Some(temp.path().join("config")),
+            Some(temp.path().join("data")),
+            Some(temp.path().join("cache")),
+        )
+        .expect("three overrides are sufficient");
+
+        assert_eq!(resolved.config_dir(), temp.path().join("config"));
+        assert_eq!(resolved.data_dir(), temp.path().join("data"));
+        assert_eq!(resolved.cache_dir(), temp.path().join("cache"));
     }
 
     #[test]

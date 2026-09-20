@@ -38,6 +38,12 @@ Each of the three can be relocated: `CHIPLOOM_CONFIG_DIR`, and `paths.data_dir` 
 are the **only** way to relocate them: the platform locations come from the Known
 Folder API, not from `%APPDATA%`, so overriding that variable achieves nothing.
 
+On a host where no home directory can be determined at all — a service account, a
+locked-down container, a CI image with no profile — setting **all three** of
+`CHIPLOOM_CONFIG_DIR`, `CHIPLOOM_DATA_DIR` and `CHIPLOOM_CACHE_DIR` is enough on its
+own; Chip Loom then never asks the platform. With only some of them set, it stops
+and names the ones still missing.
+
 The three are kept apart because they have different lifetimes. **Config** is
 hand-edited and belongs in your dotfiles. **Data** holds installed toolchains and
 target packs: large, reproducible, but expensive to re-fetch. **Cache** holds
