@@ -438,6 +438,7 @@ mod tests {
     use super::*;
     use chiploom_core::config::Loader;
     use chiploom_core::doctor;
+    use chiploom_core::doctor::Check;
     use chiploom_core::paths::Paths;
 
     fn loaded_in(root: &std::path::Path) -> Loaded {
@@ -454,15 +455,96 @@ mod tests {
     }
 
     #[test]
-    fn a_healthy_doctor_report_says_ready_and_names_every_check() {
+    fn a_healthy_doctor_report_names_every_check_and_reports_ready() {
         let temp = tempfile::tempdir().expect("temp dir");
         let text = render_doctor(temp.path(), false);
 
         assert!(text.contains("Chip Loom diagnostics"), "{text}");
         assert!(text.contains("Host platform"), "{text}");
         assert!(text.contains("Data directory"), "{text}");
-        assert!(text.trim_end().ends_with("Ready."), "{text}");
         assert!(text.contains("passed,"), "{text}");
+        // Deliberately not asserting the exact verdict line. `core.build` warns when
+        // the binary was built from a working tree with uncommitted changes, which is
+        // the normal state while developing -- an exact match here would fail for
+        // anyone with unstaged edits. The verdict wording is pinned below, against a
+        // report this test builds itself.
+        assert!(text.contains("Ready"), "{text}");
+        assert!(!text.contains("cannot run Chip Loom correctly"), "{text}");
+    }
+
+    /// Builds a report with known statuses, so verdict rendering can be asserted
+    /// exactly without depending on the machine or the git working tree.
+    fn report_of(statuses: &[Status]) -> Report {
+        Report {
+            build: chiploom_core::build_info(),
+            checks: statuses
+                .iter()
+                .enumerate()
+                .map(|(index, status)| Check {
+                    id: "test.check",
+                    title: "Test check",
+                    status: *status,
+                    detail: format!("synthesized check {index}"),
+                    hint: matches!(status, Status::Warn | Status::Error)
+                        .then(|| "do the thing".to_owned()),
+                })
+                .collect(),
+            duration_ms: 7,
+        }
+    }
+
+    fn render_of(statuses: &[Status], strict: bool) -> String {
+        let mut out = Vec::new();
+        doctor_report(&mut out, &report_of(statuses), Palette::plain(), strict).expect("render");
+        String::from_utf8(out).expect("utf-8")
+    }
+
+    #[test]
+    fn the_verdict_matches_the_worst_finding() {
+        // Clean.
+        let text = render_of(&[Status::Ok, Status::Skipped], false);
+        assert!(text.trim_end().ends_with("Ready."), "{text}");
+
+        // A warning is safe to ignore unless the caller says otherwise.
+        let text = render_of(&[Status::Ok, Status::Warn], false);
+        assert!(
+            text.trim_end().ends_with("safe to ignore for now."),
+            "{text}"
+        );
+        let text = render_of(&[Status::Ok, Status::Warn], true);
+        assert!(text.contains("--strict treats the warnings"), "{text}");
+
+        // A failure outranks everything, with or without --strict.
+        for strict in [false, true] {
+            let text = render_of(&[Status::Ok, Status::Warn, Status::Error], strict);
+            assert!(
+                text.contains("cannot run Chip Loom correctly yet"),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_summary_line_counts_and_pluralises_correctly() {
+        let text = render_of(
+            &[Status::Ok, Status::Ok, Status::Warn, Status::Error],
+            false,
+        );
+        assert!(
+            text.contains("2 passed, 1 warning, 1 failure, 0 skipped"),
+            "{text}"
+        );
+
+        let text = render_of(
+            &[Status::Warn, Status::Warn, Status::Error, Status::Error],
+            false,
+        );
+        assert!(
+            text.contains("0 passed, 2 warnings, 2 failures, 0 skipped"),
+            "{text}"
+        );
+
+        assert!(render_of(&[Status::Ok], false).contains("(7 ms)"));
     }
 
     #[test]

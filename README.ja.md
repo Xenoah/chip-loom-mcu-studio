@@ -147,10 +147,60 @@ offline = true       # ネットワークに一切接続しない
 結果とその出所を確認できます。全キーの一覧は
 [docs/configuration.md](docs/configuration.md) にあります。
 
+## ロードマップ
+
+Chip Loom は全11フェーズで構築します。各フェーズの完了時に、その時点で動作する成果物を
+**GitHub Prerelease** として公開するため、開発履歴がそのままリリース履歴になります。
+`v1.0.0` が最初の完成製品であり、それ以前のものはすべて開発履歴・検証履歴です。
+評価や進捗の追跡のためのもので、依存して使うためのものではありません。
+
+| バージョン | Phase | 提供するもの | 状態 |
+| --- | --- | --- | --- |
+| [`v0.1.0-pre.0`](https://github.com/Xenoah/chip-loom-mcu-studio/releases/tag/v0.1.0-pre.0) | 0 — 基盤 | Workspace、Core、CLI、Extension、Core IPC、CI、ドキュメント | **公開済み** |
+| `v0.2.0-pre.0` | 1 — Target 管理 | MCU Database、Target Pack、Board Profile、メモリマップ、`chiploom target` | 未着手 |
+| `v0.3.0-pre.0` | 2 — Toolchain 管理 | 自動ダウンロード、SHA-256 検証、キャッシュ、バージョン固定、オフライン取込 | 未着手 |
+| `v0.4.0-pre.0` | 3 — Build Engine | C／C++／アセンブリ、依存グラフ、並列・増分ビルド、`compile_commands.json` | 未着手 |
+| `v0.5.0-pre.0` | 4 — Flash Engine | Device 検出、Erase／Program／Verify／Reset、UF2・DFU・UART・AVR ISP・SWD・ESP ROM | 未着手 |
+| `v0.6.0-pre.0` | 5 — UART／USB Monitor | ASCII／HEX／Binary、CDC・HID・Bulk、Telemetry、グラフ、MCU 側デバッグライブラリ | 未着手 |
+| `v0.7.0-pre.0` | 6 — Debugger | Debug Adapter Protocol、CMSIS-DAP、Breakpoint、DWARF、SVD Peripheral Viewer | 未着手 |
+| `v0.8.0-pre.0` | 7 — Framework 統合 | Bare Metal、CMSIS、STM32 HAL、Arduino Core、Pico SDK、ESP-IDF、FreeRTOS | 未着手 |
+| `v0.9.0-pre.0` | 8 — Library／Test／解析 | Lockfile 付き Library Manager、Host／MCU テスト、clang-tidy | 未着手 |
+| `v0.10.0-pre.0` | 9 — Remote／OTA | Remote Build・Flash・Monitor・Debug、Device 共有、Rollback 付き OTA | 未着手 |
+| `v1.0.0-rc.x` | 10 — 完成版検証 | 5 プラットフォーム、ストレス・耐久試験。新機能は追加しない | 未着手 |
+| `v1.0.0` | — | 最初の正式リリース | 未着手 |
+
+大きなフェーズでは、検証可能な区切りごとに `v0.4.0-pre.1`、`-pre.2` のように
+同一フェーズ内で Prerelease を追加します。
+
+### 進捗
+
+**全11フェーズ中 1 フェーズ完了。** フェーズ数では約 9% ですが、工数ベースでは
+3〜5% 程度です。Phase 0 は以降のすべてが乗る土台であり、重量級の Build Engine・
+Flash Engine・Debugger はいずれもこの先にあります。
+
+### `v1.0.0` に残さないもの
+
+全フェーズの設計を規定している原則であり、各フェーズの完了条件を「実行して確かめられる
+こと」として書いている理由です。
+
+* 未実装のボタンやコマンド
+* ダミー処理・placeholder
+* `TODO` による主要機能の欠落
+* 「将来対応」を前提とした主要機能
+* **実機未検証のまま「対応済み」と表示する対象**
+
+最後の項目は、このロードマップの進め方に対する厳しい制約になります。Phase 4・5・6・7・10
+の完了条件は物理的なものです。実チップへの書き込み、USB 抜き差しへの耐性、デバッグ
+プローブの駆動、5 つの OS とアーキテクチャの組み合わせでの動作。コードの記述と単体
+テストはどこでも可能ですが、対応表を埋めるには実機が目の前に必要です。
+
+各フェーズの詳細は [docs/roadmap.md](docs/roadmap.md) にあります。
+
 ## ドキュメント
 
 | 文書 | 内容 |
 | --- | --- |
+| [AGENTS.md](AGENTS.md) | **引継ぎ資料**：現状、壊してはならない不変条件、一度痛い目を見た罠。開発を引き継ぐ場合はまずこれを。 |
 | [docs/architecture.md](docs/architecture.md) | Core／CLI／Extension の責務分離とその理由。 |
 | [docs/cli.md](docs/cli.md) | 全コマンド・全オプション・終了コード。 |
 | [docs/configuration.md](docs/configuration.md) | 全設定キーと環境変数。 |

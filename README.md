@@ -151,10 +151,61 @@ offline = true       # never open a network connection
 `chiploom config show --sources` prints the result with its provenance.
 [docs/configuration.md](docs/configuration.md) documents every key.
 
+## Roadmap
+
+Chip Loom is built in eleven phases. Each one ends with a working, testable artifact
+published as a **GitHub prerelease**, so the development history *is* the release
+history. `v1.0.0` is the first finished product; everything before it is development
+history, useful for following along and evaluating, not a release to depend on.
+
+| Version | Phase | Delivers | Status |
+| --- | --- | --- | --- |
+| [`v0.1.0-pre.0`](https://github.com/Xenoah/chip-loom-mcu-studio/releases/tag/v0.1.0-pre.0) | 0 — Foundation | Workspace, core, CLI, extension, Core IPC protocol, CI, docs | **Released** |
+| `v0.2.0-pre.0` | 1 — Target system | MCU database, target packs, board profiles, memory maps, `chiploom target` | Not started |
+| `v0.3.0-pre.0` | 2 — Toolchain manager | Automatic download, SHA-256 verification, caching, version pinning, offline import | Not started |
+| `v0.4.0-pre.0` | 3 — Build engine | C/C++/asm, dependency graph, parallel and incremental builds, `compile_commands.json` | Not started |
+| `v0.5.0-pre.0` | 4 — Flash engine | Device detection, erase/program/verify/reset, UF2 · DFU · UART · AVR ISP · SWD · ESP ROM | Not started |
+| `v0.6.0-pre.0` | 5 — UART / USB monitor | ASCII/hex/binary, CDC · HID · bulk, telemetry, graphs, MCU-side debug library | Not started |
+| `v0.7.0-pre.0` | 6 — Debugger | Debug Adapter Protocol, CMSIS-DAP, breakpoints, DWARF, SVD peripheral viewer | Not started |
+| `v0.8.0-pre.0` | 7 — Framework integration | Bare metal, CMSIS, STM32 HAL, Arduino Core, Pico SDK, ESP-IDF, FreeRTOS | Not started |
+| `v0.9.0-pre.0` | 8 — Library / test / analysis | Library manager with lockfile, host and on-device tests, clang-tidy | Not started |
+| `v0.10.0-pre.0` | 9 — Remote / OTA | Remote build · flash · monitor · debug, device sharing, OTA with rollback | Not started |
+| `v1.0.0-rc.x` | 10 — Final verification | Five platforms, stress and endurance tests, no new features | Not started |
+| `v1.0.0` | — | First stable release | Not started |
+
+A phase may publish more than one prerelease (`v0.4.0-pre.1`, `-pre.2`) whenever
+there is a verifiable milestone inside it.
+
+### Progress
+
+**1 of 11 phases complete.** By effort rather than phase count that is closer to
+3–5%: Phase 0 is the foundation everything else sits on, and the heavyweight build,
+flash and debug engines are all still ahead.
+
+### What `v1.0.0` will not contain
+
+The rule that shapes every phase, and the reason each one's completion condition is
+written in terms of something you can run:
+
+* no unimplemented buttons or commands;
+* no dummy or placeholder behaviour;
+* no major feature missing behind a `TODO`;
+* no major feature that depends on "we will add this later";
+* **nothing listed as supported that has not been verified on real hardware.**
+
+That last point is a hard constraint on how this roadmap can advance. Phases 4, 5, 6,
+7 and 10 have completion conditions that are physical — writing to real silicon,
+surviving a USB unplug, driving a debug probe, running on five OS and architecture
+combinations. Their code can be written and unit-tested anywhere; their support
+tables cannot be filled in without the hardware in front of someone.
+
+[docs/roadmap.md](docs/roadmap.md) has the full description of each phase.
+
 ## Documentation
 
 | Document | Contents |
 | --- | --- |
+| [AGENTS.md](AGENTS.md) | **Handover**: current state, the invariants that must hold, and the traps that have already cost time. Read this first if you are picking the project up. |
 | [docs/architecture.md](docs/architecture.md) | How the core, CLI and extension divide the work, and why. |
 | [docs/cli.md](docs/cli.md) | Every command, flag and exit code. |
 | [docs/configuration.md](docs/configuration.md) | Every configuration key and environment variable. |

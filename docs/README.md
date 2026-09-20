@@ -2,6 +2,7 @@
 
 | Document | Contents |
 | --- | --- |
+| [../AGENTS.md](../AGENTS.md) | **Handover**: current state, invariants, traps. Read first when picking the project up. |
 | [architecture.md](architecture.md) | How the core, the CLI and the extension divide the work, and why. |
 | [cli.md](cli.md) | Reference: every command, flag and exit code. |
 | [configuration.md](configuration.md) | Reference: every configuration key and environment variable. |
@@ -19,6 +20,7 @@
   `chiploom config show --sources`.
 * *How does the extension talk to the core?* — [ipc-protocol.md](ipc-protocol.md).
 * *Where does my change belong?* — [architecture.md](architecture.md).
+* *What has already gone wrong here?* — [../AGENTS.md](../AGENTS.md) §6.
 * *When will Chip Loom do X?* — [roadmap.md](roadmap.md).
 
 ## Conventions

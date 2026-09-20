@@ -20,7 +20,12 @@ and are not negotiable:
 
 ## Before you start
 
-Run the diagnostics. It tells you whether your machine is set up, and it is the
+Read [AGENTS.md](AGENTS.md). It records the state of the project, the invariants that
+have to keep holding, and the platform traps that have already cost time once —
+Windows storage locations, `node --test` globs, macOS path symlinks. It will save you
+rediscovering them.
+
+Then run the diagnostics. It tells you whether your machine is set up, and it is the
 first thing anyone will ask you for if something goes wrong:
 
 ```bash

@@ -9,7 +9,23 @@ finished product. Full, bilingual notes for each published version are in
 
 ## [Unreleased]
 
-Nothing yet. Phase 1 (target system) is next; see [docs/roadmap.md](docs/roadmap.md).
+Phase 1 (target system) is next; see [docs/roadmap.md](docs/roadmap.md).
+
+### Added
+
+- `AGENTS.md`: a handover record of the project's state, the invariants that have to
+  keep holding, the reasoning behind the non-obvious choices, and the platform traps
+  that have already cost time once.
+- The roadmap now appears in both READMEs, with per-phase status and an explicit note
+  that phases 4–7 and 10 have completion conditions no sandbox can satisfy.
+
+### Fixed
+
+- A rendering test pinned the exact `doctor` verdict line from a real run, so it
+  failed for anyone with uncommitted changes: `core.build` warns on a dirty working
+  tree by design, which changes that line. Verdict wording is now asserted against a
+  report the test builds itself, which also covers the warning and failure verdicts
+  and the summary line's pluralisation that the old test did not.
 
 ## [0.1.0-pre.0] — 2026-09-20
 
