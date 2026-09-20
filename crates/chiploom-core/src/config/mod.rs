@@ -34,6 +34,14 @@ pub const ENV_PREFIX: &str = "CHIPLOOM_";
 /// Points Chip Loom at a specific configuration file, replacing discovery.
 pub const ENV_CONFIG_FILE: &str = "CHIPLOOM_CONFIG";
 
+/// Relocates the directory the user-global `config.toml` is read from.
+///
+/// Environment-only, because it decides which file to read and so cannot itself
+/// come from a file. It is also the only portable way to relocate the directory:
+/// on Windows the platform locations come from the Known Folder API rather than
+/// from `%APPDATA%`, so overriding that variable achieves nothing.
+pub const ENV_CONFIG_DIR: &str = "CHIPLOOM_CONFIG_DIR";
+
 /// Which layer a value came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -204,7 +212,13 @@ impl Loader {
     /// # Errors
     /// Fails when a file that was named explicitly is missing, when any file is
     /// unreadable or invalid, or when a value is out of range.
-    pub fn load(self) -> Result<Loaded> {
+    pub fn load(mut self) -> Result<Loaded> {
+        // Applied before anything is read: it decides which file to read.
+        self.base_paths = self
+            .base_paths
+            .clone()
+            .with_config_dir(self.env.get(ENV_CONFIG_DIR).map(PathBuf::from));
+
         let mut sources = vec![Source {
             kind: SourceKind::Defaults,
             path: None,
@@ -631,6 +645,41 @@ mod tests {
             .load()
             .expect_err("a file the user named must exist");
         assert_eq!(err.exit_code(), crate::error::ExitCode::Config);
+    }
+
+    #[test]
+    fn the_config_dir_override_relocates_the_global_file() {
+        let fixture = fixture();
+        // Written where the override points, not where the platform would put it.
+        let elsewhere = fixture.cwd.join("ci-config");
+        std::fs::create_dir_all(&elsewhere).expect("create dir");
+        std::fs::write(elsewhere.join("config.toml"), "[network]\nretries = 11\n")
+            .expect("write config");
+        // ...and something different where the platform would.
+        std::fs::write(
+            fixture.paths.global_config_file(),
+            "[network]\nretries = 1\n",
+        )
+        .expect("write platform config");
+
+        let env = BTreeMap::from([(
+            ENV_CONFIG_DIR.to_owned(),
+            elsewhere.to_string_lossy().into_owned(),
+        )]);
+        let loaded = loader(&fixture).with_env(env).load().expect("load");
+
+        assert_eq!(loaded.config.network.retries, 11);
+        assert_eq!(loaded.paths.config_dir(), elsewhere);
+        // `config path` has to stay truthful about where it actually looked.
+        let global = loaded
+            .sources
+            .iter()
+            .find(|source| source.kind == SourceKind::GlobalFile)
+            .expect("global recorded");
+        assert_eq!(
+            global.path.as_deref(),
+            Some(elsewhere.join("config.toml").as_path())
+        );
     }
 
     #[test]

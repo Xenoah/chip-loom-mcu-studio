@@ -14,25 +14,32 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 
 /// Builds an invocation whose configuration cannot come from the real machine.
+///
+/// Isolation goes through Chip Loom's own `CHIPLOOM_*_DIR` overrides rather than
+/// through `HOME` and the platform variables. That is not a preference: on
+/// Windows the platform locations come from the Known Folder API, so overriding
+/// `%APPDATA%` does nothing and a test that relied on it would read -- and write
+/// to -- the real user profile. Using the documented overrides also means these
+/// tests exercise the mechanism a CI user would actually reach for.
 fn chiploom(home: &Path) -> Command {
     let mut command = Command::cargo_bin("chiploom").expect("the chiploom binary must be built");
     command
-        // Linux and the XDG spec.
+        // The overrides that work on every platform.
+        .env("CHIPLOOM_CONFIG_DIR", home.join("config"))
+        .env("CHIPLOOM_DATA_DIR", home.join("data"))
+        .env("CHIPLOOM_CACHE_DIR", home.join("cache"))
+        // Belt and braces for anything that still consults the home directory.
         .env("HOME", home)
+        .env("USERPROFILE", home)
         .env("XDG_CONFIG_HOME", home.join("config"))
         .env("XDG_DATA_HOME", home.join("data"))
         .env("XDG_CACHE_HOME", home.join("cache"))
-        // Windows.
-        .env("APPDATA", home.join("AppData/Roaming"))
-        .env("LOCALAPPDATA", home.join("AppData/Local"))
-        // Nothing the developer exported may leak in.
+        // Nothing else the developer exported may leak in.
         .env_remove("CHIPLOOM_CONFIG")
         .env_remove("CHIPLOOM_LOG")
         .env_remove("CHIPLOOM_LOG_LEVEL")
         .env_remove("CHIPLOOM_LOG_FORMAT")
         .env_remove("CHIPLOOM_LOG_FILE")
-        .env_remove("CHIPLOOM_DATA_DIR")
-        .env_remove("CHIPLOOM_CACHE_DIR")
         .env_remove("CHIPLOOM_OFFLINE")
         .env_remove("CHIPLOOM_NETWORK_TIMEOUT")
         .env_remove("CHIPLOOM_NETWORK_RETRIES")
@@ -40,6 +47,11 @@ fn chiploom(home: &Path) -> Command {
         .env("NO_COLOR", "1")
         .current_dir(home);
     command
+}
+
+/// The user-global configuration file inside an isolated home.
+fn global_config(home: &Path) -> std::path::PathBuf {
+    home.join("config/config.toml")
 }
 
 fn home() -> tempfile::TempDir {
@@ -105,7 +117,9 @@ fn doctor_creates_the_directories_it_reports_on() {
 
     // The write probe is what makes `doctor` meaningful, and it leaves the
     // directory tree in place rather than merely guessing about it.
-    assert!(home.path().join("data/chiploom").is_dir() || home.path().join("data").is_dir());
+    for dir in ["config", "data", "cache"] {
+        assert!(home.path().join(dir).is_dir(), "`{dir}` was not created");
+    }
 }
 
 #[test]
@@ -298,7 +312,7 @@ fn the_directory_flag_changes_where_the_project_is_found() {
 #[test]
 fn no_global_config_ignores_the_user_file() {
     let home = home();
-    let global = home.path().join("config/chiploom/config.toml");
+    let global = global_config(home.path());
     std::fs::create_dir_all(global.parent().expect("parent")).expect("create config dir");
     std::fs::write(&global, "[log]\nlevel = \"trace\"\n").expect("write global config");
 
@@ -318,6 +332,30 @@ fn no_global_config_ignores_the_user_file() {
 // ---------------------------------------------------------------------------
 // Usage errors and the IPC server.
 // ---------------------------------------------------------------------------
+
+#[test]
+fn the_config_dir_override_relocates_the_user_global_file() {
+    let home = home();
+    let elsewhere = home.path().join("ci-config");
+    std::fs::create_dir_all(&elsewhere).expect("create dir");
+    std::fs::write(elsewhere.join("config.toml"), "[network]\nretries = 11\n")
+        .expect("write config");
+
+    chiploom(home.path())
+        .env("CHIPLOOM_CONFIG_DIR", &elsewhere)
+        .args(["config", "show"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("retries = 11"));
+
+    // And it is reported, so `config path` stays truthful about where it looked.
+    chiploom(home.path())
+        .env("CHIPLOOM_CONFIG_DIR", &elsewhere)
+        .args(["config", "path"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ci-config"));
+}
 
 #[test]
 fn an_unknown_subcommand_is_a_usage_error() {

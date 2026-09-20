@@ -14,10 +14,24 @@
     "vscode": "^1.90.0",
     "node": ">=20"
   },
-  "categories": ["Programming Languages", "Debuggers", "Other"],
-  "keywords": ["embedded", "microcontroller", "mcu", "firmware", "arm", "risc-v"],
+  "categories": [
+    "Programming Languages",
+    "Debuggers",
+    "Other"
+  ],
+  "keywords": [
+    "embedded",
+    "microcontroller",
+    "mcu",
+    "firmware",
+    "arm",
+    "risc-v"
+  ],
   "main": "./out/src/extension.js",
-  "activationEvents": ["onStartupFinished", "workspaceContains:chiploom.toml"],
+  "activationEvents": [
+    "onStartupFinished",
+    "workspaceContains:chiploom.toml"
+  ],
   "contributes": {
     "commands": [
       {
@@ -57,7 +71,13 @@
         },
         "chiploom.logLevel": {
           "type": "string",
-          "enum": ["error", "warn", "info", "debug", "trace"],
+          "enum": [
+            "error",
+            "warn",
+            "info",
+            "debug",
+            "trace"
+          ],
           "default": "info",
           "description": "Log level requested from the Chip Loom core. Records appear in the Chip Loom output channel."
         },
@@ -73,10 +93,11 @@
   "scripts": {
     "compile": "tsc --project .",
     "watch": "tsc --project . --watch",
-    "pretest": "npm run compile",
-    "test": "node --test \"out/test/**/*.test.js\"",
+    "pretest": "npm run compile && npm run check:tests",
+    "test": "node --test out/test/protocol.test.js",
     "prepackage": "node -e \"require('node:fs').copyFileSync('../LICENSE','LICENSE')\"",
-    "package": "vsce package --no-dependencies --out chiploom.vsix"
+    "package": "vsce package --no-dependencies --out chiploom.vsix",
+    "check:tests": "node -e \"const fs=require('node:fs');const found=fs.readdirSync('out/test').filter(f=>f.endsWith('.test.js'));const listed=['protocol.test.js'];const missing=found.filter(f=>!listed.includes(f));if(missing.length){console.error('Compiled test files are not listed in the npm test script: '+missing.join(', ')+'. Node 20 does not expand globs for --test, so each file is named explicitly.');process.exit(1)}\""
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

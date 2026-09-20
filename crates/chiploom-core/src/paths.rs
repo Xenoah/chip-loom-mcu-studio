@@ -77,6 +77,21 @@ impl Paths {
         self
     }
 
+    /// Returns a copy with `config_dir` replaced.
+    ///
+    /// Unlike the other two, this override cannot come from a configuration file
+    /// -- it decides *which* file to read -- so it is set from the environment
+    /// only. On Windows it is the only way to redirect the location at all: the
+    /// platform directories come from the Known Folder API, not from `%APPDATA%`,
+    /// so setting that variable has no effect.
+    #[must_use]
+    pub fn with_config_dir(mut self, dir: Option<PathBuf>) -> Self {
+        if let Some(dir) = dir {
+            self.config_dir = dir;
+        }
+        self
+    }
+
     /// Returns a copy with `data_dir` replaced, when configuration overrides it.
     #[must_use]
     pub fn with_data_dir(mut self, dir: Option<PathBuf>) -> Self {

@@ -1,12 +1,15 @@
 name: Release
 
+# A tag push is the normal trigger. `workflow_dispatch` exists for the case where
+# the tag cannot be pushed directly: it creates the tag at the commit it runs on,
+# so it must not try to check the tag out first.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to build and publish"
+        description: "Tag to create and publish, e.g. v0.1.0-pre.0"
         required: true
 
 permissions:
@@ -26,25 +29,40 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             archive: tar.gz
+            smoke: true
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-24.04-arm
+            os: ubuntu-latest
             archive: tar.gz
-          - target: x86_64-apple-darwin
-            os: macos-13
-            archive: tar.gz
+            # Cross-compiled on an x86-64 runner, so the result cannot be run here.
+            smoke: false
+            apt: gcc-aarch64-linux-gnu
+            linker: aarch64-linux-gnu-gcc
           - target: aarch64-apple-darwin
             os: macos-latest
             archive: tar.gz
+            smoke: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+            # macos-latest is Apple Silicon and has no Rosetta, so an x86-64
+            # binary cannot be executed on it.
+            smoke: false
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             archive: zip
+            smoke: true
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
           # `build.rs` records the commit in the binary, so the full history is
           # needed for the version string to be meaningful.
           fetch-depth: 0
+
+      - name: Install the cross linker
+        if: matrix.apt != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.apt }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -56,17 +74,27 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Build
+        shell: bash
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.linker }}
         run: cargo build --release --locked --target ${{ matrix.target }} --bin chiploom
 
       - name: Verify the binary runs and reports itself
-        if: matrix.target != 'aarch64-unknown-linux-gnu' || runner.arch == 'ARM64'
+        if: matrix.smoke
         shell: bash
         run: |
           set -euo pipefail
           bin="target/${{ matrix.target }}/release/chiploom"
           [ "${{ matrix.archive }}" = "zip" ] && bin="${bin}.exe"
           "$bin" --version
+          "$bin" --help > /dev/null
           "$bin" doctor
+
+      - name: Note that this artifact was not run
+        if: ${{ !matrix.smoke }}
+        run: |
+          echo "::warning::${{ matrix.target }} is cross-compiled on this runner and \
+          was not executed. The release notes must say so."
 
       - name: Package
         id: package
@@ -118,8 +146,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag || github.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -162,8 +188,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag || github.ref }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -173,25 +197,56 @@ jobs:
       - name: List what will be published
         run: ls -lR artifacts
 
-      - name: Collect the release notes for this tag
+      - name: Check that every expected artifact is present
+        run: |
+          set -euo pipefail
+          version="${{ inputs.tag || github.ref_name }}"
+          missing=0
+          for name in \
+            "chiploom-${version}-x86_64-unknown-linux-gnu.tar.gz" \
+            "chiploom-${version}-aarch64-unknown-linux-gnu.tar.gz" \
+            "chiploom-${version}-aarch64-apple-darwin.tar.gz" \
+            "chiploom-${version}-x86_64-apple-darwin.tar.gz" \
+            "chiploom-${version}-x86_64-pc-windows-msvc.zip" \
+            "chiploom-${version}.vsix"
+          do
+            if [ ! -f "artifacts/${name}" ]; then
+              echo "::error::missing artifact ${name}"
+              missing=1
+            fi
+            if [ ! -f "artifacts/${name}.sha256" ]; then
+              echo "::error::missing checksum ${name}.sha256"
+              missing=1
+            fi
+          done
+          [ "$missing" = "0" ] || exit 1
+
+      - name: Verify every checksum
+        working-directory: artifacts
+        run: |
+          set -euo pipefail
+          for file in *.sha256; do sha256sum -c "$file"; done
+
+      - name: Locate the release notes for this tag
         id: notes
         run: |
           set -euo pipefail
           version="${{ inputs.tag || github.ref_name }}"
           notes="docs/releases/${version}.md"
-          if [ -f "$notes" ]; then
-            echo "path=$notes" >> "$GITHUB_OUTPUT"
-          else
+          if [ ! -f "$notes" ]; then
             # Never publish a release with no notes; say so instead.
             echo "::error::No release notes found at $notes"
             exit 1
           fi
+          echo "path=$notes" >> "$GITHUB_OUTPUT"
 
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           name: ${{ inputs.tag || github.ref_name }}
+          # On workflow_dispatch the tag does not exist yet; create it here.
+          target_commitish: ${{ github.sha }}
           body_path: ${{ steps.notes.outputs.path }}
           # Anything with a pre-release suffix is development history, not a
           # finished product. Only `vX.Y.Z` is published as a stable release.

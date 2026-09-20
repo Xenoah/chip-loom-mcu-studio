@@ -33,6 +33,11 @@ Run `chiploom config path` to see all of this for your machine, and
 | Data | `~/.local/share/chiploom/` | `~/Library/Application Support/chiploom/` | `%APPDATA%\chiploom\data\` |
 | Cache | `~/.cache/chiploom/` | `~/Library/Caches/chiploom/` | `%LOCALAPPDATA%\chiploom\cache\` |
 
+Each of the three can be relocated: `CHIPLOOM_CONFIG_DIR`, and `paths.data_dir` /
+`paths.cache_dir` (or `CHIPLOOM_DATA_DIR` / `CHIPLOOM_CACHE_DIR`). On Windows these
+are the **only** way to relocate them: the platform locations come from the Known
+Folder API, not from `%APPDATA%`, so overriding that variable achieves nothing.
+
 The three are kept apart because they have different lifetimes. **Config** is
 hand-edited and belongs in your dotfiles. **Data** holds installed toolchains and
 target packs: large, reproducible, but expensive to re-fetch. **Cache** holds
@@ -85,6 +90,11 @@ retries = 3           # retries per failed request; 0 is allowed
 A relative path is resolved against the **project root** when there is one, and
 against the working directory otherwise. An absolute path is used as given.
 
+There is deliberately no `config_dir` key here. It would be circular — the value
+would have to be read from the file whose location it decides — so the
+configuration directory is relocated with the `CHIPLOOM_CONFIG_DIR` environment
+variable instead.
+
 ### `[log]`
 
 | Key | Type | Default | Meaning |
@@ -114,6 +124,7 @@ never touching the network is not overridden by a flag that asks to test it.
 | Variable | Equivalent | Notes |
 | --- | --- | --- |
 | `CHIPLOOM_CONFIG` | `--config` | Path to one configuration file, replacing discovery. The flag wins if both are set. |
+| `CHIPLOOM_CONFIG_DIR` | — | Directory the user-global `config.toml` is read from. Environment-only: it decides which file to read, so it cannot come from a file. |
 | `CHIPLOOM_LOG_LEVEL` | `log.level` | |
 | `CHIPLOOM_LOG_FORMAT` | `log.format` | |
 | `CHIPLOOM_LOG_FILE` | `log.file` | |
@@ -158,6 +169,16 @@ image happens to have:
 
 ```bash
 chiploom --no-global-config doctor --strict
+```
+
+**Confine a run entirely to one directory**, on any platform — which is how Chip
+Loom's own integration tests isolate themselves:
+
+```bash
+export CHIPLOOM_CONFIG_DIR=$PWD/.ci/config
+export CHIPLOOM_DATA_DIR=$PWD/.ci/data
+export CHIPLOOM_CACHE_DIR=$PWD/.ci/cache
+chiploom doctor
 ```
 
 **Vendor toolchains into the repository** so every clone shares one copy:

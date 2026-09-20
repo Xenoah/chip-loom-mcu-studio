@@ -37,6 +37,10 @@ version does not build, flash, monitor or debug anything.
   says nothing about a value leaves the layer below it alone. Unknown keys are
   collected rather than rejected, for forward compatibility. Every consulted layer
   is reported, including the missing ones.
+- `CHIPLOOM_CONFIG_DIR`, `CHIPLOOM_DATA_DIR` and `CHIPLOOM_CACHE_DIR` relocate the
+  three storage locations on every platform. On Windows they are the only way to:
+  the platform locations come from the Known Folder API, so `%APPDATA%` has no
+  effect on them.
 - Platform path resolution for configuration, data and cache directories, with
   project discovery by walking up for `chiploom.toml`, and a writability probe that
   round-trips a file rather than merely testing for existence.
@@ -85,14 +89,19 @@ version does not build, flash, monitor or debug anything.
 
 **Tests**
 
-- 135 Rust tests: unit tests beside the code, and 24 integration tests that run the
+- 137 Rust tests: unit tests beside the code, and 25 integration tests that run the
   real binary and assert on exit codes and stream separation.
 - 16 TypeScript tests that drive the real binary over the real protocol — no mocks,
   no editor required.
 - A test that runs `serve --stdio` at `-vvv` and parses every stdout line as JSON,
   so logging can never corrupt the protocol channel.
-- Both suites redirect `HOME` and the platform variables at a temporary directory,
-  so no test can read the developer's real configuration.
+- Both suites confine themselves to a temporary directory — the integration tests
+  through Chip Loom's own `CHIPLOOM_*_DIR` overrides, which is the only approach
+  that works on Windows — so no test can read, or write to, the developer's real
+  configuration.
+- `npm run check:tests` fails the extension suite if a compiled test file is not
+  named in the test script, since Node 20 does not expand globs for `--test` and
+  passing it a directory silently runs nothing.
 
 **CI and release**
 

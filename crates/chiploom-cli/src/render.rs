@@ -692,13 +692,20 @@ mod tests {
         std::fs::write(temp.path().join("data"), b"not a directory").expect("blocker");
 
         let text = render_doctor(temp.path(), false);
-        let hint_lines = text
+        let hint_lines: Vec<&str> = text
             .lines()
             .filter(|line| line.contains("Chip Loom stores") || line.contains("CHIPLOOM_DATA_DIR"))
-            .count();
-        assert!(hint_lines > 1, "the hint should be wrapped, got:\n{text}");
-        for line in text.lines() {
-            assert!(line.chars().count() <= 200, "line too long: {line}");
+            .collect();
+
+        assert!(
+            hint_lines.len() > 1,
+            "the hint should be wrapped, got:\n{text}"
+        );
+        // Only the hint is wrapped. A `detail` line carries a path, and a path is
+        // worse to read broken across lines than running past the margin -- on a
+        // machine whose temporary directory is long, it will.
+        for line in &hint_lines {
+            assert!(line.chars().count() <= 160, "hint line not wrapped: {line}");
         }
     }
 

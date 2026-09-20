@@ -131,13 +131,18 @@ The phase is complete when that last step passes.
 
 ## Target triples
 
-| Triple | Runner | Archive |
-| --- | --- | --- |
-| `x86_64-unknown-linux-gnu` | `ubuntu-latest` | `.tar.gz` |
-| `aarch64-unknown-linux-gnu` | `ubuntu-24.04-arm` | `.tar.gz` |
-| `x86_64-apple-darwin` | `macos-13` | `.tar.gz` |
-| `aarch64-apple-darwin` | `macos-latest` | `.tar.gz` |
-| `x86_64-pc-windows-msvc` | `windows-latest` | `.zip` |
+| Triple | Runner | Archive | Smoke-tested on the runner |
+| --- | --- | --- | --- |
+| `x86_64-unknown-linux-gnu` | `ubuntu-latest` | `.tar.gz` | Yes |
+| `aarch64-unknown-linux-gnu` | `ubuntu-latest` (cross) | `.tar.gz` | No — cross-compiled |
+| `aarch64-apple-darwin` | `macos-latest` | `.tar.gz` | Yes |
+| `x86_64-apple-darwin` | `macos-latest` (cross) | `.tar.gz` | No — no Rosetta on the runner |
+| `x86_64-pc-windows-msvc` | `windows-latest` | `.zip` | Yes |
+
+Only the three universally-available runner labels are used, so a release never
+fails for want of a runner image. The two cross-compiled targets cannot be executed
+where they are built; the workflow emits a warning for each, and the release notes
+must say which artifacts were run and which were not.
 
 ## Publishing by hand
 

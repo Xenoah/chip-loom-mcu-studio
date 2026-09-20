@@ -89,6 +89,11 @@ cd extension && npm test
 | Integration | `crates/chiploom-cli/tests/cli.rs` | The real binary exits with the right code and puts the right things on stdout versus stderr. |
 | Protocol | `extension/test/protocol.test.ts` | The extension's client and the Rust core actually talk to each other. Nothing is mocked. |
 
+The extension's `npm test` names each compiled test file explicitly, because Node
+20 does not expand globs for `--test` and passing it a directory silently runs
+nothing. `npm run check:tests` fails the run if a compiled test file is not in that
+list, so the explicit list cannot go stale unnoticed.
+
 The protocol tests are how "the extension communicates with the Rust core" is
 verified without launching an editor. They spawn `chiploom serve --stdio`, complete
 the handshake, call every method, and assert that a malformed request does not kill
@@ -97,10 +102,16 @@ the session. Set `CHIPLOOM_BIN` to test a specific executable.
 ### Test isolation
 
 No test may read the developer's real configuration, or results differ between a
-laptop and CI. Both suites redirect `HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`,
-`XDG_CACHE_HOME`, `APPDATA` and `LOCALAPPDATA` at a temporary directory and clear
-every `CHIPLOOM_*` variable. Use the existing helper — `chiploom()` in
-`tests/cli.rs`, `Loader::new` with explicit `Paths` in unit tests — rather than a
+laptop and CI — and on Windows, a test that got this wrong would *write* to the
+real user profile.
+
+Redirecting `HOME` and `%APPDATA%` is not sufficient: on Windows the platform
+locations come from the Known Folder API, so those variables have no effect. The
+integration tests therefore isolate themselves with Chip Loom's own overrides —
+`CHIPLOOM_CONFIG_DIR`, `CHIPLOOM_DATA_DIR` and `CHIPLOOM_CACHE_DIR` — which has
+the side benefit of exercising the mechanism a CI user would reach for. Unit tests
+construct `Paths` explicitly instead. Use the existing helpers (`chiploom()` in
+`tests/cli.rs`, `Loader::new` with explicit `Paths` in unit tests) rather than a
 new approach.
 
 The environment is captured explicitly rather than read at the point of use:
